@@ -1,0 +1,68 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Pick output and add SPA fallback
+        id: pages
+        run: |
+          set -eu
+          if [ -d .output/public ]; then
+            OUT=.output/public
+          elif [ -d dist/client ]; then
+            OUT=dist/client
+          elif [ -d dist ]; then
+            OUT=dist
+          else
+            echo "No build output found (.output/public, dist/client, or dist)" >&2
+            exit 1
+          fi
+          test -f "$OUT/index.html"
+          cp "$OUT/index.html" "$OUT/404.html"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.pages.outputs.path }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
